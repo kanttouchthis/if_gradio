@@ -10,20 +10,43 @@ from diffusers import IFPipeline, IFSuperResolutionPipeline
 from diffusers import IFImg2ImgPipeline, IFImg2ImgSuperResolutionPipeline
 from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline
 from diffusers import DiffusionPipeline
+from diffusers.pipelines.deepfloyd_if.timesteps import *
 from diffusers.utils import pt_to_pil
 from huggingface_hub import login
 from PIL import Image
 
+timesteps = {
+    "None": None,
+    "fast27": fast27_timesteps,
+    "smart27": smart27_timesteps,
+    "smart50": smart50_timesteps,
+    "smart100": smart100_timesteps,
+    "smart185": smart185_timesteps,
+    "super27": super27_timesteps,
+    "super40": super40_timesteps,
+    "super100": super100_timesteps,
+}
+
 
 def setup(cpu_offload=True, xformers_mea=False):
     stage_1 = IFPipeline.from_pretrained(
-        "DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16
+        "DeepFloyd/IF-I-XL-v1.0",
+        variant="fp16",
+        torch_dtype=torch.float16,
+        safety_checker=None,
+        feature_extractor=None,
+        requires_safety_checker=False,
+        watermarker=None,
     )
     stage_2 = IFSuperResolutionPipeline.from_pretrained(
         "DeepFloyd/IF-II-L-v1.0",
         text_encoder=None,
         variant="fp16",
         torch_dtype=torch.float16,
+        safety_checker=None,
+        feature_extractor=None,
+        requires_safety_checker=False,
+        watermarker=None,
     )
     stage_3 = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16
@@ -80,13 +103,29 @@ def embed(prompt, negative_prompt, stage_1):
     return prompt_embeds, negative_embeds
 
 
-def txt2img_interface(prompt, negative_prompt, seed, stages):
+def txt2img_interface(
+    prompt,
+    negative_prompt,
+    seed,
+    stages,
+    stage_1_timesteps,
+    stage_1_step,
+    stage_1_guidance_scale,
+    stage_2_timesteps,
+    stage_2_step,
+    stage_2_guidance_scale,
+    stage_3_step,
+    stage_3_guidance_scale,
+    stage_3_noise_level,
+):
     convert_pipe("txt2img")
     global stage_1, stage_2, stage_3
     t = int(time())
     stages = int(stages)
-    seed = random.randint(0, 2**32) if seed == -1 else seed
+    seed = random.randint(0, 2**32) if seed ==-1 else seed
     generator = torch.manual_seed(seed)
+    stage_1_timesteps = timesteps[stage_1_timesteps]
+    stage_2_timesteps = timesteps[stage_2_timesteps]
     # embed
     prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
 
@@ -95,11 +134,14 @@ def txt2img_interface(prompt, negative_prompt, seed, stages):
         prompt_embeds=prompt_embeds,
         negative_prompt_embeds=negative_embeds,
         generator=generator,
+        timesteps=stage_1_timesteps,
+        num_inference_steps=int(stage_1_step),
+        guidance_scale=stage_1_guidance_scale,
         output_type="pt",
     ).images
     image1_out = pt_to_pil(image1)[0]
     image1_out.save(f"outputs/{t}_1.png")
-    yield resize_with_aspect_ratio(image1_out, 1024)
+    yield image1_out
     if stages == 1:
         return
 
@@ -109,17 +151,25 @@ def txt2img_interface(prompt, negative_prompt, seed, stages):
         prompt_embeds=prompt_embeds,
         negative_prompt_embeds=negative_embeds,
         generator=generator,
+        timesteps=stage_2_timesteps,
+        num_inference_steps=int(stage_2_step),
+        guidance_scale=stage_2_guidance_scale,
         output_type="pt",
     ).images
     image2_out = pt_to_pil(image2)[0]
     image2_out.save(f"outputs/{t}_2.png")
-    yield resize_with_aspect_ratio(image2_out, 1024)
+    yield image2_out
     if stages == 2:
         return
 
     # stage 3
     image3 = stage_3(
-        prompt=prompt, image=image2, generator=generator, noise_level=100
+        prompt=prompt,
+        image=image2,
+        generator=generator,
+        num_inference_steps=int(stage_3_step),
+        guidance_scale=stage_3_guidance_scale,
+        noise_level=stage_3_noise_level,
     ).images
     image3[0].save(f"outputs/{t}_3.png")
     yield image3[0]
@@ -175,7 +225,9 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     yield image3[0]
 
 
-def inpainting_interface(image_and_mask, prompt, negative_prompt, seed, stages, strength):
+def inpainting_interface(
+    image_and_mask, prompt, negative_prompt, seed, stages, strength
+):
     convert_pipe("inpainting")
     global stage_1, stage_2, stage_3
     t = int(time())
@@ -245,8 +297,60 @@ if __name__ == "__main__":
                     txt2img_seed = gr.Number(label="Seed", default=0)
                     txt2img_stages = gr.Slider(1, 3, 3, step=1, label="Stages")
                     txt2img_button = gr.Button("Generate")
+                    with gr.Accordion("Stage 1", open=False):
+                        txt2img_stage_1_timesteps = gr.Radio(
+                            choices = [
+                                "None",
+                                "fast27",
+                                "smart27",
+                                "smart50",
+                                "smart100",
+                                "smart185",
+                                "super27",
+                                "super40",
+                                "super100",
+                            ],
+                            value="None",
+                        )
+                        txt2img_stage_1_step = gr.Slider(
+                            1, 200, 100, step=1, label="Steps"
+                        )
+                        txt2img_stage_1_guidance_scale = gr.Slider(
+                            0, 30, 7, step=0.1, label="Guidance Scale"
+                        )
+                    with gr.Accordion("Stage 2", open=False):
+                        txt2img_stage_2_timesteps = gr.Radio(
+                            choices = [
+                                "None",
+                                "fast27",
+                                "smart27",
+                                "smart50",
+                                "smart100",
+                                "smart185",
+                                "super27",
+                                "super40",
+                                "super100",
+                            ],
+                            value = "None",
+                        )
+                        txt2img_stage_2_step = gr.Slider(
+                            1, 100, 50, step=1, label="Steps"
+                        )
+                        txt2img_stage_2_guidance_scale = gr.Slider(
+                            0, 30, 4, step=0.1, label="Guidance Scale"
+                        )
+                    with gr.Accordion("Stage 3", open=False):
+                        txt2img_stage_3_step = gr.Slider(
+                            1, 100, 75, step=1, label="Steps"
+                        )
+                        txt2img_stage_3_guidance_scale = gr.Slider(
+                            0, 30, 9, step=0.1, label="Guidance Scale"
+                        )
+                        txt2img_stage_3_noise_level = gr.Slider(
+                            0, 100, 100, step=1, label="Noise Level"
+                        )
                 with gr.Column():
-                    txt2img_output = gr.Image()
+                    txt2img_output = gr.Image(shape=(1024, 1024))
 
         with gr.Tab("img2img"):
             with gr.Row():
@@ -293,6 +397,15 @@ if __name__ == "__main__":
                 txt2img_negative_prompt,
                 txt2img_seed,
                 txt2img_stages,
+                txt2img_stage_1_timesteps,
+                txt2img_stage_1_step,
+                txt2img_stage_1_guidance_scale,
+                txt2img_stage_2_timesteps,
+                txt2img_stage_2_step,
+                txt2img_stage_2_guidance_scale,
+                txt2img_stage_3_step,
+                txt2img_stage_3_guidance_scale,
+                txt2img_stage_3_noise_level,
             ],
             outputs=txt2img_output,
         )
