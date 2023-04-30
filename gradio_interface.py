@@ -1,29 +1,18 @@
 import argparse
 import os
 import random
+import json
 from time import time
 
 import gradio as gr
 import torch
 from diffusers import IFPipeline, IFSuperResolutionPipeline
 from diffusers import IFImg2ImgPipeline, IFImg2ImgSuperResolutionPipeline
+from diffusers import IFInpaintingPipeline, IFInpaintingSuperResolutionPipeline
 from diffusers import DiffusionPipeline
 from diffusers.utils import pt_to_pil
 from huggingface_hub import login
 from PIL import Image
-
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--cpu_offload", action="store_true", help="Disable CPU offload"
-    )
-    parser.add_argument(
-        "--xformers",
-        action="store_true",
-        help="Use XFormers memory efficient attention",
-    )
-    return parser.parse_args()
 
 
 def setup(cpu_offload=True, xformers_mea=False):
@@ -61,6 +50,10 @@ def convert_pipe(pipe_type="txt2img"):
         print("Converting to img2img")
         stage_1 = IFImg2ImgPipeline(**stage_1.components)
         stage_2 = IFImg2ImgSuperResolutionPipeline(**stage_2.components)
+    elif pipe_type == "inpainting" and not isinstance(stage_1, IFInpaintingPipeline):
+        print("Converting to inpainting")
+        stage_1 = IFInpaintingPipeline(**stage_1.components)
+        stage_2 = IFInpaintingSuperResolutionPipeline(**stage_2.components)
     else:
         return
 
@@ -88,13 +81,16 @@ def embed(prompt, negative_prompt, stage_1):
 
 
 def txt2img_interface(prompt, negative_prompt, seed, stages):
-    global stage_1, stage_2, stage_3
     convert_pipe("txt2img")
+    global stage_1, stage_2, stage_3
     t = int(time())
     stages = int(stages)
-    prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
     seed = random.randint(0, 2**32) if seed == -1 else seed
     generator = torch.manual_seed(seed)
+    # embed
+    prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
+
+    # stage 1
     image1 = stage_1(
         prompt_embeds=prompt_embeds,
         negative_prompt_embeds=negative_embeds,
@@ -106,6 +102,8 @@ def txt2img_interface(prompt, negative_prompt, seed, stages):
     yield resize_with_aspect_ratio(image1_out, 1024)
     if stages == 1:
         return
+
+    # stage 2
     image2 = stage_2(
         image=image1,
         prompt_embeds=prompt_embeds,
@@ -118,6 +116,8 @@ def txt2img_interface(prompt, negative_prompt, seed, stages):
     yield resize_with_aspect_ratio(image2_out, 1024)
     if stages == 2:
         return
+
+    # stage 3
     image3 = stage_3(
         prompt=prompt, image=image2, generator=generator, noise_level=100
     ).images
@@ -128,12 +128,15 @@ def txt2img_interface(prompt, negative_prompt, seed, stages):
 def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     convert_pipe("img2img")
     global stage_1, stage_2, stage_3
-    image = Image.fromarray(image.astype("uint8"), "RGB")
     t = int(time())
     stages = int(stages)
-    prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
     seed = random.randint(0, 2**32) if seed == -1 else seed
     generator = torch.manual_seed(seed)
+    image = Image.fromarray(image.astype("uint8"), "RGB")
+    # embed
+    prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
+
+    # stage 1
     image1 = stage_1(
         image=image,
         prompt_embeds=prompt_embeds,
@@ -147,6 +150,8 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     yield resize_with_aspect_ratio(image1_out, 1024)
     if stages == 1:
         return
+
+    # stage 2
     image2 = stage_2(
         image=image1,
         original_image=image,
@@ -161,6 +166,61 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     yield resize_with_aspect_ratio(image2_out, 1024)
     if stages == 2:
         return
+
+    # stage 3
+    image3 = stage_3(
+        prompt=prompt, image=image2, generator=generator, noise_level=100
+    ).images
+    image3[0].save(f"outputs/{t}_3.png")
+    yield image3[0]
+
+
+def inpainting_interface(image_and_mask, prompt, negative_prompt, seed, stages, strength):
+    convert_pipe("inpainting")
+    global stage_1, stage_2, stage_3
+    t = int(time())
+    stages = int(stages)
+    seed = random.randint(0, 2**32) if seed == -1 else seed
+    generator = torch.manual_seed(seed)
+    image = Image.fromarray(image_and_mask["image"].astype("uint8"), "RGB")
+    mask = Image.fromarray(image_and_mask["mask"].astype("uint8"), "RGBA")
+    # embed
+    prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
+
+    # stage 1
+    image1 = stage_1(
+        image=image,
+        mask_image=mask,
+        prompt_embeds=prompt_embeds,
+        negative_prompt_embeds=negative_embeds,
+        strength=strength,
+        generator=generator,
+        output_type="pt",
+    ).images
+    image1_out = pt_to_pil(image1)[0]
+    image1_out.save(f"outputs/{t}_1.png")
+    yield resize_with_aspect_ratio(image1_out, 1024)
+    if stages == 1:
+        return
+
+    # stage 2
+    image2 = stage_2(
+        image=image1,
+        mask_image=mask,
+        original_image=image,
+        prompt_embeds=prompt_embeds,
+        negative_prompt_embeds=negative_embeds,
+        strength=strength,
+        generator=generator,
+        output_type="pt",
+    ).images
+    image2_out = pt_to_pil(image2)[0]
+    image2_out.save(f"outputs/{t}_2.png")
+    yield resize_with_aspect_ratio(image2_out, 1024)
+    if stages == 2:
+        return
+
+    # stage 3
     image3 = stage_3(
         prompt=prompt, image=image2, generator=generator, noise_level=100
     ).images
@@ -169,11 +229,12 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
 
 
 if __name__ == "__main__":
-    args = get_args()
-    login(open("key.txt", "r").read())
-    stage_1, stage_2, stage_3 = setup(
-        cpu_offload=args.cpu_offload, xformers_mea=args.xformers
-    )
+    config = json.loads(open("config.json", "r").read())
+    if not config["ui_test"]:
+        login(open("key.txt", "r").read())
+        stage_1, stage_2, stage_3 = setup(
+            cpu_offload=config["cpu_offload"], xformers_mea=config["xformers_mea"]
+        )
     with gr.Blocks() as demo:
         gr.Markdown("deep-floyd IF")
         with gr.Tab("txt2img"):
@@ -206,6 +267,25 @@ if __name__ == "__main__":
                 with gr.Column():
                     img2img_output = gr.Image()
 
+        with gr.Tab("inpainting"):
+            with gr.Row():
+                with gr.Column():
+                    inpainting_image = gr.ImageMask()
+                    inpainting_button = gr.Button("Generate")
+                    inpainting_prompt = gr.Textbox(label="Prompt")
+                    inpainting_negative_prompt = gr.Textbox(label="Negative Prompt")
+                    inpainting_seed = gr.Number(label="Seed", default=0)
+                    inpainting_stages = gr.Slider(1, 3, 3, step=1, label="Stages")
+                    inpainting_strength = gr.Slider(
+                        0,
+                        1,
+                        0.8,
+                        step=0.01,
+                        label="Strength",
+                    )
+                with gr.Column():
+                    inpainting_output = gr.Image()
+
         txt2img_button.click(
             txt2img_interface,
             inputs=[
@@ -227,6 +307,19 @@ if __name__ == "__main__":
                 img2img_strength,
             ],
             outputs=img2img_output,
+        )
+
+        inpainting_button.click(
+            inpainting_interface,
+            inputs=[
+                inpainting_image,
+                inpainting_prompt,
+                inpainting_negative_prompt,
+                inpainting_seed,
+                inpainting_stages,
+                inpainting_strength,
+            ],
+            outputs=inpainting_output,
         )
 demo.queue()
 demo.launch()
