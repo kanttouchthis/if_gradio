@@ -15,7 +15,6 @@ from diffusers.utils import pt_to_pil
 from huggingface_hub import login
 from PIL import Image
 
-torch.cuda.set_per_process_memory_fraction(10 / 24, "cuda:0")
 
 timesteps = {
     "None": None,
