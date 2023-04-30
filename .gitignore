@@ -1,2 +1,6 @@
 key.txt
 results
+__pycache__
+.vscode
+flagged
+outputs

@@ -36,12 +36,13 @@ if cpu_offload:
     stage_3.enable_model_cpu_offload()
 
 def generate(prompt = 'a photo of a kangaroo wearing an orange hoodie and blue sunglasses standing in front of the eiffel tower holding a sign that says "very deep learning"',
+            negative_prompt = None,
             seed=0,
             output_path="."
             ):
     os.makedirs(output_path, exist_ok=True)
     generator = torch.manual_seed(seed)
-    prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt)
+    prompt_embeds, negative_embeds = stage_1.encode_prompt(prompt, negative_prompt=negative_prompt)
     t = int(time.time())
     # stage 1
     image = stage_1(prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_embeds, generator=generator, output_type="pt").images
@@ -64,12 +65,15 @@ if __name__ == "__main__":
     while True:
         try:
             prompt = input("prompt: ")
+            negative_prompt = input("negative prompt: ")
             seed = input("seed: ")
+            if negative_prompt == "":
+                negative_prompt = None
             if seed == "":
                 seed = random.randint(0, 10000000)
             else:
                 seed = int(seed)
-            generate(prompt, seed=seed, output_path="./results")
+            generate(prompt, negative_prompt=negative_prompt, seed=seed, output_path="./results")
         except KeyboardInterrupt:
             exit()
         except Exception as e:
