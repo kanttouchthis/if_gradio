@@ -168,10 +168,6 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     yield image3[0]
 
 
-def test(*args, **kwargs):
-    print("test")
-
-
 if __name__ == "__main__":
     args = get_args()
     login(open("key.txt", "r").read())
