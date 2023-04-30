@@ -107,14 +107,15 @@ def txt2img_interface(
     prompt,
     negative_prompt,
     seed,
+    batch_size,
     stages,
     stage_1_timesteps,
-    stage_1_step,
+    stage_1_steps,
     stage_1_guidance_scale,
     stage_2_timesteps,
-    stage_2_step,
+    stage_2_steps,
     stage_2_guidance_scale,
-    stage_3_step,
+    stage_3_steps,
     stage_3_guidance_scale,
     stage_3_noise_level,
 ):
@@ -122,57 +123,71 @@ def txt2img_interface(
     global stage_1, stage_2, stage_3
     t = int(time())
     stages = int(stages)
-    seed = random.randint(0, 2**32) if seed ==-1 else seed
+    seed = random.randint(0, 2**32) if seed == -1 else int(seed)
     generator = torch.manual_seed(seed)
     stage_1_timesteps = timesteps[stage_1_timesteps]
     stage_2_timesteps = timesteps[stage_2_timesteps]
+    if stage_1_timesteps is not None:
+        stage_1_steps = len(stage_1_timesteps)
+    if stage_2_timesteps is not None:
+        stage_2_steps = len(stage_2_timesteps)
     # embed
     prompt_embeds, negative_embeds = embed(prompt, negative_prompt, stage_1)
 
     # stage 1
+    images = []
     image1 = stage_1(
         prompt_embeds=prompt_embeds,
         negative_prompt_embeds=negative_embeds,
         generator=generator,
         timesteps=stage_1_timesteps,
-        num_inference_steps=int(stage_1_step),
+        num_inference_steps=int(stage_1_steps),
         guidance_scale=stage_1_guidance_scale,
+        num_images_per_prompt=int(batch_size),
         output_type="pt",
     ).images
-    image1_out = pt_to_pil(image1)[0]
-    image1_out.save(f"outputs/{t}_1.png")
-    yield image1_out
+    for i, img in enumerate(pt_to_pil(image1)):
+        img.save(f"outputs/{t}_1_{i}.png")
+        images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
+    yield images
     if stages == 1:
         return
 
+    prompt_embeds = torch.cat([prompt_embeds] * batch_size)
+    negative_embeds = torch.cat([negative_embeds] * batch_size)
     # stage 2
+    images = []
     image2 = stage_2(
         image=image1,
         prompt_embeds=prompt_embeds,
         negative_prompt_embeds=negative_embeds,
         generator=generator,
         timesteps=stage_2_timesteps,
-        num_inference_steps=int(stage_2_step),
+        num_inference_steps=int(stage_2_steps),
         guidance_scale=stage_2_guidance_scale,
         output_type="pt",
     ).images
-    image2_out = pt_to_pil(image2)[0]
-    image2_out.save(f"outputs/{t}_2.png")
-    yield image2_out
+    for i, img in enumerate(pt_to_pil(image2)):
+        img.save(f"outputs/{t}_2_{i}.png")
+        images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
+    yield images
     if stages == 2:
         return
 
     # stage 3
+    images = []
     image3 = stage_3(
-        prompt=prompt,
+        prompt=[prompt] * batch_size,
         image=image2,
         generator=generator,
-        num_inference_steps=int(stage_3_step),
+        num_inference_steps=int(stage_3_steps),
         guidance_scale=stage_3_guidance_scale,
         noise_level=stage_3_noise_level,
     ).images
-    image3[0].save(f"outputs/{t}_3.png")
-    yield image3[0]
+    for i, img in enumerate(image3):
+        img.save(f"outputs/{t}_3_{i}.png")
+        images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
+    yield images
 
 
 def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
@@ -295,11 +310,14 @@ if __name__ == "__main__":
                     txt2img_prompt = gr.Textbox(label="Prompt")
                     txt2img_negative_prompt = gr.Textbox(label="Negative Prompt")
                     txt2img_seed = gr.Number(label="Seed", default=0)
+                    txt2img_batch_size = gr.Slider(
+                        1, 9, 1, step=1, label="Images per batch"
+                    )
                     txt2img_stages = gr.Slider(1, 3, 3, step=1, label="Stages")
                     txt2img_button = gr.Button("Generate")
                     with gr.Accordion("Stage 1", open=False):
                         txt2img_stage_1_timesteps = gr.Radio(
-                            choices = [
+                            choices=[
                                 "None",
                                 "fast27",
                                 "smart27",
@@ -311,8 +329,9 @@ if __name__ == "__main__":
                                 "super100",
                             ],
                             value="None",
+                            label="Timesteps",
                         )
-                        txt2img_stage_1_step = gr.Slider(
+                        txt2img_stage_1_steps = gr.Slider(
                             1, 200, 100, step=1, label="Steps"
                         )
                         txt2img_stage_1_guidance_scale = gr.Slider(
@@ -320,7 +339,7 @@ if __name__ == "__main__":
                         )
                     with gr.Accordion("Stage 2", open=False):
                         txt2img_stage_2_timesteps = gr.Radio(
-                            choices = [
+                            choices=[
                                 "None",
                                 "fast27",
                                 "smart27",
@@ -331,16 +350,17 @@ if __name__ == "__main__":
                                 "super40",
                                 "super100",
                             ],
-                            value = "None",
+                            value="None",
+                            label="Timesteps",
                         )
-                        txt2img_stage_2_step = gr.Slider(
+                        txt2img_stage_2_steps = gr.Slider(
                             1, 100, 50, step=1, label="Steps"
                         )
                         txt2img_stage_2_guidance_scale = gr.Slider(
                             0, 30, 4, step=0.1, label="Guidance Scale"
                         )
                     with gr.Accordion("Stage 3", open=False):
-                        txt2img_stage_3_step = gr.Slider(
+                        txt2img_stage_3_steps = gr.Slider(
                             1, 100, 75, step=1, label="Steps"
                         )
                         txt2img_stage_3_guidance_scale = gr.Slider(
@@ -350,7 +370,8 @@ if __name__ == "__main__":
                             0, 100, 100, step=1, label="Noise Level"
                         )
                 with gr.Column():
-                    txt2img_output = gr.Image(shape=(1024, 1024))
+                    txt2img_output = gr.Gallery()
+                    txt2img_output.style(columns=[3], rows=[3], object_fit="contain", height="auto")
 
         with gr.Tab("img2img"):
             with gr.Row():
@@ -396,14 +417,15 @@ if __name__ == "__main__":
                 txt2img_prompt,
                 txt2img_negative_prompt,
                 txt2img_seed,
+                txt2img_batch_size,
                 txt2img_stages,
                 txt2img_stage_1_timesteps,
-                txt2img_stage_1_step,
+                txt2img_stage_1_steps,
                 txt2img_stage_1_guidance_scale,
                 txt2img_stage_2_timesteps,
-                txt2img_stage_2_step,
+                txt2img_stage_2_steps,
                 txt2img_stage_2_guidance_scale,
-                txt2img_stage_3_step,
+                txt2img_stage_3_steps,
                 txt2img_stage_3_guidance_scale,
                 txt2img_stage_3_noise_level,
             ],
