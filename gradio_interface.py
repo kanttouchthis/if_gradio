@@ -1,7 +1,7 @@
-import argparse
 import os
 import random
 import json
+import gc
 from time import time
 
 import gradio as gr
@@ -14,6 +14,8 @@ from diffusers.pipelines.deepfloyd_if.timesteps import *
 from diffusers.utils import pt_to_pil
 from huggingface_hub import login
 from PIL import Image
+
+torch.cuda.set_per_process_memory_fraction(10 / 24, "cuda:0")
 
 timesteps = {
     "None": None,
@@ -28,7 +30,17 @@ timesteps = {
 }
 
 
-def setup(cpu_offload=True, xformers_mea=False):
+# flushes vram
+def flush():
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+def setup(
+    cpu_offload=[True, True, True],
+    sequential_offload=[False, False, False],
+    xformers_mea=[False, False, False],
+):
     stage_1 = IFPipeline.from_pretrained(
         "DeepFloyd/IF-I-XL-v1.0",
         variant="fp16",
@@ -51,14 +63,14 @@ def setup(cpu_offload=True, xformers_mea=False):
     stage_3 = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16
     )
-    if cpu_offload:
-        stage_1.enable_model_cpu_offload()
-        stage_2.enable_model_cpu_offload()
-        stage_3.enable_model_cpu_offload()
-    if xformers_mea:
-        stage_1.enable_xformers_memory_efficient_attention()
-        stage_2.enable_xformers_memory_efficient_attention()
-        stage_3.enable_xformers_memory_efficient_attention()
+    for i, stage in enumerate([stage_1, stage_2, stage_3]):
+        if cpu_offload[i] and not sequential_offload[i]:
+            stage.enable_model_cpu_offload()
+        if sequential_offload[i]:
+            stage.enable_sequential_cpu_offload()
+        if xformers_mea[i]:
+            stage.enable_xformers_memory_efficient_attention()
+
     os.makedirs("outputs", exist_ok=True)
     return stage_1, stage_2, stage_3
 
@@ -146,6 +158,7 @@ def txt2img_interface(
         num_images_per_prompt=int(batch_size),
         output_type="pt",
     ).images
+    flush()
     for i, img in enumerate(pt_to_pil(image1)):
         img.save(f"outputs/{t}_1_{i}.png")
         images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
@@ -167,6 +180,7 @@ def txt2img_interface(
         guidance_scale=stage_2_guidance_scale,
         output_type="pt",
     ).images
+    flush()
     for i, img in enumerate(pt_to_pil(image2)):
         img.save(f"outputs/{t}_2_{i}.png")
         images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
@@ -184,6 +198,7 @@ def txt2img_interface(
         guidance_scale=stage_3_guidance_scale,
         noise_level=stage_3_noise_level,
     ).images
+    flush()
     for i, img in enumerate(image3):
         img.save(f"outputs/{t}_3_{i}.png")
         images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
@@ -300,7 +315,9 @@ if __name__ == "__main__":
     if not config["ui_test"]:
         login(open("key.txt", "r").read())
         stage_1, stage_2, stage_3 = setup(
-            cpu_offload=config["cpu_offload"], xformers_mea=config["xformers_mea"]
+            cpu_offload=config["cpu_offload"],
+            sequential_offload=config["sequential_offload"],
+            xformers_mea=config["xformers_mea"],
         )
     with gr.Blocks() as demo:
         gr.Markdown("deep-floyd IF")
@@ -371,7 +388,9 @@ if __name__ == "__main__":
                         )
                 with gr.Column():
                     txt2img_output = gr.Gallery()
-                    txt2img_output.style(columns=[3], rows=[3], object_fit="contain", height="auto")
+                    txt2img_output.style(
+                        columns=[3], rows=[3], object_fit="contain", height="auto"
+                    )
 
         with gr.Tab("img2img"):
             with gr.Row():

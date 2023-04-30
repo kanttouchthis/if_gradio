@@ -1,5 +1,6 @@
 {
-    "cpu_offload": true,
-    "xformers_mea": false,
+    "cpu_offload": [true, true, true],
+    "sequential_offload": [true, false, false],
+    "xformers_mea": [false, false, false],
     "ui_test": false
 }
