@@ -202,6 +202,7 @@ def txt2img_interface(
         img.save(f"outputs/{t}_3_{i}.png")
         images.append((img, f"prompt:'{prompt}' seed:{seed} n:{i}"))
     yield images
+    return
 
 
 def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
