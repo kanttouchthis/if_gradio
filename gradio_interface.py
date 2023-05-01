@@ -92,17 +92,6 @@ def convert_pipe(pipe_type="txt2img"):
         return
 
 
-def resize_with_aspect_ratio(image, size, resample=Image.NEAREST):
-    w, h = image.size
-    if w > h:
-        new_w = size
-        new_h = int(h * (size / w))
-    else:
-        new_w = int(w * (size / h))
-        new_h = size
-    return image.resize((new_w, new_h), resample=resample)
-
-
 def embed(prompt, negative_prompt, stage_1):
     if prompt == "":
         prompt = None
@@ -227,7 +216,7 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     ).images
     image1_out = pt_to_pil(image1)[0]
     image1_out.save(f"outputs/{t}_1.png")
-    yield resize_with_aspect_ratio(image1_out, 1024)
+    yield image1_out
     if stages == 1:
         return
 
@@ -243,7 +232,7 @@ def img2img_interface(image, prompt, negative_prompt, seed, stages, strength):
     ).images
     image2_out = pt_to_pil(image2)[0]
     image2_out.save(f"outputs/{t}_2.png")
-    yield resize_with_aspect_ratio(image2_out, 1024)
+    yield image2_out
     if stages == 2:
         return
 
@@ -281,7 +270,7 @@ def inpainting_interface(
     ).images
     image1_out = pt_to_pil(image1)[0]
     image1_out.save(f"outputs/{t}_1.png")
-    yield resize_with_aspect_ratio(image1_out, 1024)
+    yield image1_out
     if stages == 1:
         return
 
@@ -298,7 +287,7 @@ def inpainting_interface(
     ).images
     image2_out = pt_to_pil(image2)[0]
     image2_out.save(f"outputs/{t}_2.png")
-    yield resize_with_aspect_ratio(image2_out, 1024)
+    yield image2_out
     if stages == 2:
         return
 
