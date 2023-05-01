@@ -79,15 +79,23 @@ def convert_pipe(pipe_type="txt2img"):
     if pipe_type == "txt2img" and not isinstance(stage_1, IFPipeline):
         print("Converting to txt2img")
         stage_1 = IFPipeline(**stage_1.components, requires_safety_checker=False)
-        stage_2 = IFSuperResolutionPipeline(**stage_2.components, requires_safety_checker=False)
+        stage_2 = IFSuperResolutionPipeline(
+            **stage_2.components, requires_safety_checker=False
+        )
     elif pipe_type == "img2img" and not isinstance(stage_1, IFImg2ImgPipeline):
         print("Converting to img2img")
         stage_1 = IFImg2ImgPipeline(**stage_1.components, requires_safety_checker=False)
-        stage_2 = IFImg2ImgSuperResolutionPipeline(**stage_2.components, requires_safety_checker=False)
+        stage_2 = IFImg2ImgSuperResolutionPipeline(
+            **stage_2.components, requires_safety_checker=False
+        )
     elif pipe_type == "inpainting" and not isinstance(stage_1, IFInpaintingPipeline):
         print("Converting to inpainting")
-        stage_1 = IFInpaintingPipeline(**stage_1.components, requires_safety_checker=False)
-        stage_2 = IFInpaintingSuperResolutionPipeline(**stage_2.components, requires_safety_checker=False)
+        stage_1 = IFInpaintingPipeline(
+            **stage_1.components, requires_safety_checker=False
+        )
+        stage_2 = IFInpaintingSuperResolutionPipeline(
+            **stage_2.components, requires_safety_checker=False
+        )
     else:
         return
 
