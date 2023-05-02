@@ -1,3 +1,3 @@
 call conda activate deepfloyd
-python gradio_interface.py
+python run.py
 call conda deactivate
