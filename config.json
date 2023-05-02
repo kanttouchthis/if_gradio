@@ -1,6 +1,10 @@
 {
-    "cpu_offload": [true, true, true],
-    "sequential_offload": [false, false, false],
-    "xformers_mea": [false, false, false],
-    "ui_test": false
+    "stage_1_offload": "cpu",
+    "stage_2_offload": "cpu",
+    "stage_3_offload": "cpu",
+    "torch_compile": false,
+    "output_folder": "./output",
+    "save_intermediate": false,
+    "ui_test": false,
+    "share": false
 }

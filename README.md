@@ -1,3 +1,7 @@
+a crude but mostly functional gradio script for deep-floyd IF.
+i haven't been able to test everything, as it takes a while to run.
+currently supports txt2img, img2img and inpainting.
+the following install instructions worked for me:
 ```
 conda create -n deepfloyd python=3.10 -y
 conda activate deepfloyd
