@@ -14,9 +14,13 @@ from diffusers import (
     IFSuperResolutionPipeline,
 )
 from diffusers.pipelines.deepfloyd_if.timesteps import *
+from diffusers.schedulers import (
+    DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    DPMSolverSinglestepScheduler,
+)
 from diffusers.utils import pt_to_pil
 from huggingface_hub import login
-from transformers import T5EncoderModel
 
 
 def flush():
@@ -76,6 +80,20 @@ def enable_model_cpu_offload(pipe, gpu_id=0):
 
         # We'll offload the last model manually.
         pipe.final_offload_hook = hook
+
+
+def set_scheduler(stage, scheduler_name):
+    if scheduler_name == "ddpm":
+        scheduler = DDPMScheduler.from_config(stage.scheduler.config)
+    elif scheduler_name == "dpm++":
+        scheduler = DPMSolverMultistepScheduler.from_config(stage.scheduler.config)
+        scheduler.is_predicting_variance = True
+        scheduler.lambda_min_clipped = -5.1
+    elif scheduler_name == "dpm++s":
+        scheduler = DPMSolverSinglestepScheduler.from_config(stage.scheduler.config)
+        scheduler.is_predicting_variance = True
+        scheduler.lambda_min_clipped = -5.1
+    stage.scheduler = scheduler
 
 
 class IFModel:
@@ -200,7 +218,7 @@ class IFModel:
     def switch(self, pipe):
         if self.active == pipe:
             return
-        print("[IF] Switching to %s", pipe)
+        print(f"[IF] Switching to {pipe}")
         if pipe != "txt2img":
             offload(self.stage_1)
             offload(self.stage_2)
@@ -220,6 +238,9 @@ class IFModel:
         seed: int = 0,
         num_images_per_prompt: int = 1,
         stages: int = 3,
+        scheduler_1: str = "ddpm",
+        scheduler_2: str = "ddpm",
+        scheduler_3: str = "ddpm",
         timesteps_1: str = "None",
         num_inference_steps_1: int = 100,
         guidance_scale_1: float = 7.0,
@@ -256,6 +277,7 @@ class IFModel:
 
         # run stage 1
         print("[IF] Running stage 1")
+        set_scheduler(self.stage_1, scheduler_1)
         stage_1_output = self.stage_1(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -282,6 +304,7 @@ class IFModel:
 
         # run stage 2
         print("[IF] Running stage 2")
+        set_scheduler(self.stage_2, scheduler_2)
         stage_2_output = self.stage_2(
             image=stage_1_output,
             prompt_embeds=prompt_embeds,
@@ -300,6 +323,7 @@ class IFModel:
 
         # run stage 3
         print("[IF] Running stage 3")
+        set_scheduler(self.stage_3, scheduler_3)
         stage_3_output = self.stage_3(
             image=stage_2_output,
             prompt=[prompt] * num_images_per_prompt,
@@ -323,6 +347,9 @@ class IFModel:
         num_images_per_prompt: int = 1,
         stages: int = 3,
         strength: float = 0.8,
+        scheduler_1: str = "ddpm",
+        scheduler_2: str = "ddpm",
+        scheduler_3: str = "ddpm",
         num_inference_steps_3: int = 75,
         guidance_scale_3: float = 9.0,
         noise_level_3: float = 100.0,
@@ -346,6 +373,7 @@ class IFModel:
         flush()
         # run stage 1
         print("[IF] Running stage 1")
+        set_scheduler(self.img2img_stage_1, scheduler_1)
         stage_1_output = self.img2img_stage_1(
             image=image,
             prompt_embeds=prompt_embeds,
@@ -371,6 +399,7 @@ class IFModel:
 
         # run stage 2
         print("[IF] Running stage 2")
+        set_scheduler(self.img2img_stage_2, scheduler_2)
         stage_2_output = self.img2img_stage_2(
             image=stage_1_output,
             original_image=image,
@@ -389,6 +418,7 @@ class IFModel:
 
         # run stage 3
         print("[IF] Running stage 3")
+        set_scheduler(self.stage_3, scheduler_3)
         stage_3_output = self.stage_3(
             image=stage_2_output,
             prompt=[prompt] * num_images_per_prompt,
@@ -412,6 +442,9 @@ class IFModel:
         num_images_per_prompt: int = 1,
         stages: int = 3,
         strength: float = 0.8,
+        scheduler_1: str = "ddpm",
+        scheduler_2: str = "ddpm",
+        scheduler_3: str = "ddpm",
         num_inference_steps_3: int = 75,
         guidance_scale_3: float = 9.0,
         noise_level_3: float = 100.0,
@@ -437,6 +470,7 @@ class IFModel:
         flush()
         # run stage 1
         print("[IF] Running stage 1")
+        set_scheduler(self.inpainting_stage_1, scheduler_1)
         stage_1_output = self.inpainting_stage_1(
             image=image,
             mask_image=mask,
@@ -462,6 +496,7 @@ class IFModel:
         image = [image] * num_images_per_prompt
         # run stage 2
         print("[IF] Running stage 2")
+        set_scheduler(self.inpainting_stage_2, scheduler_2)
         stage_2_output = self.inpainting_stage_2(
             image=stage_1_output,
             mask_image=mask,
@@ -481,6 +516,7 @@ class IFModel:
 
         # run stage 3
         print("[IF] Running stage 3")
+        set_scheduler(self.stage_3, scheduler_3)
         stage_3_output = self.stage_3(
             image=stage_2_output,
             prompt=[prompt] * num_images_per_prompt,

@@ -1,5 +1,18 @@
 import gradio as gr
 
+SCHEDULERS = ["ddpm", "dpm++", "dpm++s"]
+TIMESTEPS = [
+    "None",
+    "fast27",
+    "smart27",
+    "smart50",
+    "smart100",
+    "smart185",
+    "super27",
+    "super40",
+    "super100",
+]
+
 
 def setup(model):
     with gr.Blocks() as demo:
@@ -17,18 +30,11 @@ def setup(model):
                         minimum=1, maximum=3, value=3, step=1, label="stages"
                     )
                     with gr.Accordion("Stage 1", open=False):
+                        scheduler_1 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                         timesteps_1 = gr.Dropdown(
-                            [
-                                "None",
-                                "fast27",
-                                "smart27",
-                                "smart50",
-                                "smart100",
-                                "smart185",
-                                "super27",
-                                "super40",
-                                "super100",
-                            ],
+                            TIMESTEPS,
                             label="timesteps",
                             value="None",
                         )
@@ -47,18 +53,11 @@ def setup(model):
                             label="guidance scale",
                         )
                     with gr.Accordion("Stage 2", open=False):
+                        scheduler_2 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                         timesteps_2 = gr.Dropdown(
-                            [
-                                "None",
-                                "fast27",
-                                "smart27",
-                                "smart50",
-                                "smart100",
-                                "smart185",
-                                "super27",
-                                "super40",
-                                "super100",
-                            ],
+                            TIMESTEPS,
                             label="timesteps",
                             value="None",
                         )
@@ -77,6 +76,9 @@ def setup(model):
                             label="guidance scale",
                         )
                     with gr.Accordion("Stage 3", open=False):
+                        scheduler_3 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                         num_inference_steps_3 = gr.Slider(
                             minimum=1,
                             maximum=150,
@@ -111,6 +113,9 @@ def setup(model):
                             seed,
                             num_images_per_prompt,
                             stages,
+                            scheduler_1,
+                            scheduler_2,
+                            scheduler_3,
                             timesteps_1,
                             num_inference_steps_1,
                             guidance_scale_1,
@@ -139,7 +144,18 @@ def setup(model):
                     strength = gr.Slider(
                         minimum=0, maximum=1, value=0.8, step=0.01, label="strength"
                     )
+                    with gr.Accordion("Stage 1", open=False):
+                        scheduler_1 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
+                    with gr.Accordion("Stage 2", open=False):
+                        scheduler_2 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                     with gr.Accordion("Stage 3", open=False):
+                        scheduler_3 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                         num_inference_steps_3 = gr.Slider(
                             minimum=1,
                             maximum=150,
@@ -176,6 +192,9 @@ def setup(model):
                             num_images_per_prompt,
                             stages,
                             strength,
+                            scheduler_1,
+                            scheduler_2,
+                            scheduler_3,
                             num_inference_steps_3,
                             guidance_scale_3,
                             noise_level_3,
@@ -198,7 +217,18 @@ def setup(model):
                     strength = gr.Slider(
                         minimum=0, maximum=1, value=0.8, step=0.01, label="strength"
                     )
+                    with gr.Accordion("Stage 1", open=False):
+                        scheduler_1 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
+                    with gr.Accordion("Stage 2", open=False):
+                        scheduler_2 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                     with gr.Accordion("Stage 3", open=False):
+                        scheduler_3 = gr.Dropdown(
+                            SCHEDULERS, label="scheduler", value="ddpm"
+                        )
                         num_inference_steps_3 = gr.Slider(
                             minimum=1,
                             maximum=150,
@@ -235,6 +265,9 @@ def setup(model):
                             num_images_per_prompt,
                             stages,
                             strength,
+                            scheduler_1,
+                            scheduler_2,
+                            scheduler_3,
                             num_inference_steps_3,
                             guidance_scale_3,
                             noise_level_3,
