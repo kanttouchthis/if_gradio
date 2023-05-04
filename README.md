@@ -14,6 +14,7 @@ pip install git+https://github.com/openai/CLIP.git --no-deps
 pip uninstall torch -y
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install huggingface_hub
-pip install --upgrade diffusers accelerate transformers safetensors
+pip install --upgrade accelerate transformers safetensors
+pip install git+https://github.com/huggingface/diffusers
 pip install gradio
 ```
